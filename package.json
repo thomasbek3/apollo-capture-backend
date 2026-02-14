@@ -7,10 +7,16 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js"
   },
-  "keywords": ["property", "walkthrough", "capture", "ai"],
+  "keywords": [
+    "property",
+    "walkthrough",
+    "capture",
+    "ai"
+  ],
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@notionhq/client": "^5.9.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

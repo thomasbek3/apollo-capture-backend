@@ -6,6 +6,7 @@ const transcriptService = require('./transcript');
 const claudeService = require('./claude');
 const photosService = require('./photos');
 const ffmpegService = require('./ffmpeg');
+const notionService = require('./notion');
 
 /**
  * In-memory status tracking for capture processing.
@@ -201,10 +202,39 @@ async function processCaptureAsync(captureId, captureData) {
         // Persist to disk
         storage.saveResult(captureId, finalResult);
 
+        // ─── STEP 6: NOTION SYNC ───
+        if (notionService.isConfigured()) {
+            logger.info('Step 6: Notion Sync');
+            updateProgress(captureId, 'notionSync', 'processing');
+
+            try {
+                const backendBaseUrl = process.env.BACKEND_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+                const notionResult = await notionService.syncToNotion(finalResult, backendBaseUrl);
+
+                if (notionResult) {
+                    finalResult.notionPageUrl = notionResult.pageUrl;
+                    finalResult.notionPageId = notionResult.pageId;
+                    // Re-save with Notion URL
+                    storage.saveResult(captureId, finalResult);
+                    updateProgress(captureId, 'notionSync', 'complete');
+                    logger.info(`Step 6 complete: Notion page created at ${notionResult.pageUrl}`);
+                } else {
+                    updateProgress(captureId, 'notionSync', 'skipped');
+                    logger.info('Step 6 skipped: Notion not fully configured');
+                }
+            } catch (notionErr) {
+                logger.error('Notion sync failed (non-fatal)', notionErr);
+                updateProgress(captureId, 'notionSync', 'failed');
+                // Non-fatal — don't fail the whole pipeline
+            }
+        } else {
+            updateProgress(captureId, 'notionSync', 'skipped');
+            logger.info('Notion sync skipped — not configured');
+        }
+
         // Update status
         status.status = 'complete';
         status.result = finalResult;
-        updateProgress(captureId, 'notionSync', 'skipped'); // Not implemented yet
 
         logger.info(`=== Processing complete for capture ${captureId} ===`);
     } catch (err) {
