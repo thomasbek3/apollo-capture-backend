@@ -24,7 +24,7 @@ function initNotion() {
  * Check if Notion integration is configured and ready.
  */
 function isConfigured() {
-    return !!(NOTION_API_KEY && notion);
+    return !!(NOTION_API_KEY && NOTION_DATABASE_ID);
 }
 
 // ─── RATE LIMITING ───

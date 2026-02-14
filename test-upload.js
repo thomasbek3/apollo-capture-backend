@@ -1,67 +1,67 @@
-const http = require('http');
-const path = require('path');
+/**
+ * Quick test: sends a minimal capture upload to the deployed backend
+ * to verify the full pipeline including Notion sync.
+ */
 
-const boundary = '----TestBoundary' + Date.now();
+const BASE = process.argv[2] || 'https://apollo-capture-backend-production.up.railway.app';
 
-function field(name, value) {
-    return `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
+async function main() {
+    const formData = new FormData();
+    formData.append('propertyName', 'Test Property - 123 Main St');
+    formData.append('propertyAddress', '123 Main Street, Austin TX 78701');
+    formData.append('transcript', JSON.stringify([
+        { text: 'Welcome to this beautiful property. This is the living room with hardwood floors and large windows.', timestampSeconds: 0 },
+        { text: 'Moving into the kitchen here. Granite countertops, stainless steel appliances, recently updated.', timestampSeconds: 30 },
+        { text: 'And here is the master bedroom. Very spacious, walk-in closet on the left.', timestampSeconds: 60 },
+    ]));
+    formData.append('photoMetadata', '[]');
+    formData.append('roomBoundaries', JSON.stringify([
+        { roomName: 'Living Room', timestampSeconds: 0 },
+        { roomName: 'Kitchen', timestampSeconds: 30 },
+        { roomName: 'Master Bedroom', timestampSeconds: 60 },
+    ]));
+
+    console.log(`Uploading test capture to ${BASE}/api/capture/upload ...`);
+
+    const res = await fetch(`${BASE}/api/capture/upload`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    const data = await res.json();
+    console.log(`Response (${res.status}):`, JSON.stringify(data, null, 2));
+
+    if (!data.captureId) {
+        console.error('No captureId returned');
+        return;
+    }
+
+    const captureId = data.captureId;
+    console.log(`\nPolling status for ${captureId}...`);
+
+    for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+
+        const statusRes = await fetch(`${BASE}/api/capture/${captureId}/status`);
+        const status = await statusRes.json();
+        console.log(`  [${i + 1}] ${status.status} - ${status.currentStep || 'waiting'}${status.progress ? ` (${Math.round(status.progress * 100)}%)` : ''}`);
+
+        if (status.status === 'completed' || status.status === 'failed') {
+            console.log('\nFinal status:', JSON.stringify(status, null, 2));
+
+            if (status.status === 'completed') {
+                const resultRes = await fetch(`${BASE}/api/capture/${captureId}/result`);
+                const result = await resultRes.json();
+                console.log('\nResult:', JSON.stringify(result, null, 2).slice(0, 2000));
+
+                if (result.notionPageUrl) {
+                    console.log(`\nNotion page created: ${result.notionPageUrl}`);
+                }
+            }
+            return;
+        }
+    }
+    console.log('Timed out after 2.5 minutes');
 }
 
-const transcript = JSON.stringify([
-    { text: 'Welcome to the living room', timestamp: 1000, isFinal: true },
-    { text: 'This has hardwood floors', timestamp: 5000, isFinal: true },
-    { text: 'Moving into the kitchen now', timestamp: 10000, isFinal: true },
-    { text: 'Granite countertops throughout', timestamp: 15000, isFinal: true },
-]);
-
-const roomBoundaries = JSON.stringify([
-    { roomName: 'Living Room', startTime: 0, endTime: 9000 },
-    { roomName: 'Kitchen', startTime: 9000, endTime: 20000 },
-]);
-
-let body = '';
-body += field('propertyName', 'Test Property');
-body += field('address', '123 Test Street, Anytown USA');
-body += field('transcript', transcript);
-body += field('roomBoundaries', roomBoundaries);
-body += field('photoMetadata', '[]');
-body += `--${boundary}--\r\n`;
-
-const options = {
-    hostname: 'localhost',
-    port: 9000,
-    path: '/api/capture/upload',
-    method: 'POST',
-    headers: {
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        'Content-Length': Buffer.byteLength(body),
-    },
-};
-
-console.log('📤 Testing upload endpoint...');
-
-const req = http.request(options, (res) => {
-    let data = '';
-    res.on('data', (chunk) => (data += chunk));
-    res.on('end', () => {
-        console.log(`Status: ${res.statusCode}`);
-        const json = JSON.parse(data);
-        console.log('Response:', JSON.stringify(json, null, 2));
-
-        if (json.captureId) {
-            console.log(`\n📊 Checking status for ${json.captureId}...`);
-            http.get(`http://localhost:9000/api/capture/${json.captureId}/status`, (sRes) => {
-                let sData = '';
-                sRes.on('data', (c) => (sData += c));
-                sRes.on('end', () => {
-                    console.log(`Status: ${sRes.statusCode}`);
-                    console.log('Response:', JSON.stringify(JSON.parse(sData), null, 2));
-                });
-            });
-        }
-    });
-});
-
-req.on('error', (e) => console.error('Error:', e.message));
-req.write(body);
-req.end();
+main().catch(err => console.error('Error:', err));
