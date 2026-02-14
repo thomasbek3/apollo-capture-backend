@@ -1,15 +1,15 @@
 FROM node:20-slim
 
-# Install FFmpeg for video processing
+# Install FFmpeg and native dependencies for sharp
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get install -y --no-install-recommends ffmpeg python3 make g++ && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application source
 COPY . .
