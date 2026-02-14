@@ -7,6 +7,11 @@ router.get('/', (req, res) => {
         version: '1.0.0',
         service: 'apollo-capture-backend',
         timestamp: new Date().toISOString(),
+        config: {
+            notionApiKey: !!process.env.NOTION_API_KEY,
+            notionDatabaseId: !!process.env.NOTION_DATABASE_ID,
+            backendBaseUrl: !!process.env.BACKEND_BASE_URL,
+        },
     });
 });
 
