@@ -225,6 +225,35 @@ function imageBlock(url, caption = '') {
 }
 
 /**
+ * Create a video block from external URL.
+ */
+function videoBlock(url, caption = '') {
+    return {
+        object: 'block',
+        type: 'video',
+        video: {
+            type: 'external',
+            external: { url },
+            caption: caption ? [richText(caption)] : [],
+        },
+    };
+}
+
+/**
+ * Create a bookmark block (fallback for video links).
+ */
+function bookmarkBlock(url, caption = '') {
+    return {
+        object: 'block',
+        type: 'bookmark',
+        bookmark: {
+            url,
+            caption: caption ? [richText(caption)] : [],
+        },
+    };
+}
+
+/**
  * Create a paragraph block.
  */
 function paragraph(text) {
@@ -294,6 +323,26 @@ function buildContentBlocks(result, backendBaseUrl) {
         for (const room of rooms) {
             // Room heading
             blocks.push(heading2(`🚪 ${room.roomName || 'Unknown Room'}`));
+
+            // Video clip (if available)
+            if (room.videoClipUrl) {
+                const clipUrl = resolvePhotoUrl(room.videoClipUrl, backendBaseUrl);
+                if (clipUrl) {
+                    try {
+                        blocks.push(videoBlock(clipUrl, `🎬 ${room.roomName} walkthrough`));
+                    } catch (e) {
+                        // Fallback to bookmark if video block fails
+                        blocks.push(bookmarkBlock(clipUrl, `🎬 ${room.roomName} walkthrough video`));
+                    }
+                }
+            }
+
+            // Per-room transcript excerpt
+            if (room.transcriptExcerpt) {
+                const transcriptChunks = chunkText(room.transcriptExcerpt, 1800);
+                const transcriptBlocks = transcriptChunks.map(chunk => paragraph(chunk));
+                blocks.push(toggle('🎙️ Room Transcript', transcriptBlocks));
+            }
 
             // Inventory toggle
             const inventory = room.inventory || [];
