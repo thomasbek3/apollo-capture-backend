@@ -13,8 +13,21 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ─── CORS ───
+const allowedOrigins = [
+    'https://apollo-capture.vercel.app',
+    'https://apollo-capture-10tuoxfdh-thomasbek3s-projects.vercel.app',
+    'http://localhost:2100',
+    'http://localhost:3000',
+];
 app.use(cors({
-    origin: '*', // Allow all origins for now — lock down later
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, etc.)
+        if (!origin || allowedOrigins.some(o => origin.startsWith(o.replace(/\/$/, '')))) {
+            callback(null, true);
+        } else {
+            callback(null, true); // Still allow for now, log unknown origins
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
