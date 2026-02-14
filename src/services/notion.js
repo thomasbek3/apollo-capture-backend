@@ -115,59 +115,18 @@ async function ensureDatabase() {
     }
 }
 
-// ─── PAGE CREATION ───
-
 /**
  * Build the database page properties from capture result.
+ * NOTE: Notion API v5.x (2025-09-03) doesn't resolve custom property names
+ * from database.create. We only use the 'title' property and put everything
+ * else in content blocks.
  */
 function buildPageProperties(result) {
-    const overview = result.propertyOverview || {};
-
-    const properties = {
-        'Property Name': {
-            title: [{ text: { content: result.propertyName || 'Unnamed' } }],
-        },
-        'Address': {
-            rich_text: [{ text: { content: result.propertyAddress || '' } }],
-        },
-        'Status': {
-            select: { name: 'Onboarding' },
-        },
-        'Total Rooms': {
-            number: overview.totalRooms || (result.rooms ? result.rooms.length : 0),
-        },
-        'Onboarding Date': {
-            date: { start: result.captureDate || new Date().toISOString() },
+    return {
+        'title': {
+            title: [{ text: { content: result.propertyName || 'Unnamed Property' } }],
         },
     };
-
-    if (overview.estimatedBedrooms) {
-        properties['Bedrooms'] = { number: overview.estimatedBedrooms };
-    }
-    if (overview.estimatedBathrooms) {
-        properties['Bathrooms'] = { number: overview.estimatedBathrooms };
-    }
-    if (overview.propertyType) {
-        const typeMap = {
-            house: 'House', apartment: 'Apartment', condo: 'Condo',
-            townhouse: 'Townhouse',
-        };
-        const typeName = typeMap[overview.propertyType.toLowerCase()] || 'Other';
-        properties['Property Type'] = { select: { name: typeName } };
-    }
-    if (overview.hasOutdoorSpace !== undefined) {
-        properties['Has Outdoor Space'] = { checkbox: overview.hasOutdoorSpace };
-    }
-    if (overview.generalNotes) {
-        properties['General Notes'] = {
-            rich_text: [{ text: { content: truncateText(overview.generalNotes, 2000) } }],
-        };
-    }
-    if (result.rawData?.videoUrl) {
-        properties['Capture Video'] = { url: result.rawData.videoUrl };
-    }
-
-    return properties;
 }
 
 // ─── BLOCK BUILDERS ───
@@ -291,6 +250,22 @@ function buildContentBlocks(result, backendBaseUrl) {
         })
         : 'Unknown date';
     blocks.push(callout(`Onboarded on ${dateStr} via Apollo Capture`, '📋'));
+    blocks.push(paragraph(''));
+
+    // ─── PROPERTY DETAILS ───
+    const overview = result.propertyOverview || {};
+    blocks.push(heading2('📍 Property Details'));
+    if (result.propertyAddress) {
+        blocks.push(bullet(`Address: ${result.propertyAddress}`));
+    }
+    const details = [];
+    if (overview.propertyType) details.push(`Type: ${overview.propertyType}`);
+    if (overview.totalRooms) details.push(`Rooms: ${overview.totalRooms}`);
+    if (overview.estimatedBedrooms) details.push(`Beds: ${overview.estimatedBedrooms}`);
+    if (overview.estimatedBathrooms) details.push(`Baths: ${overview.estimatedBathrooms}`);
+    if (details.length > 0) blocks.push(bullet(details.join(' | ')));
+    if (overview.hasOutdoorSpace) blocks.push(bullet('Has outdoor space'));
+    if (overview.generalNotes) blocks.push(bullet(`Notes: ${overview.generalNotes}`));
     blocks.push(paragraph(''));
 
     // ─── ACCESS INFORMATION ───
@@ -475,7 +450,7 @@ async function findExistingProperty(name, address) {
             notion.databases.query({
                 database_id: NOTION_DATABASE_ID,
                 filter: {
-                    property: 'Property Name',
+                    property: 'title',
                     title: { equals: name || '' },
                 },
                 page_size: 1,
