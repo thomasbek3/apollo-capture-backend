@@ -19,11 +19,13 @@ const statusMap = new Map();
 /**
  * Initialize a new capture status entry.
  */
-function initStatus(captureId) {
+function initStatus(captureId, metadata = {}) {
     const status = {
         captureId,
         status: 'processing',
-        createdAt: new Date().toISOString(),
+        propertyName: metadata.propertyName,
+        propertyAddress: metadata.propertyAddress,
+        startedAt: new Date().toISOString(),
         progress: {
             transcription: 'pending',
             roomSegmentation: 'pending',
@@ -129,7 +131,7 @@ async function processCaptureAsync(captureId, captureData) {
         logger.info('Step 3 complete: Photos associated');
 
         // ─── STEP 4: VIDEO PROCESSING (optional) ───
-        let videoDuration = captureData.durationSeconds || 0;
+        let videoDuration = parseInt(captureData.durationSeconds) || 0;
         let roomClips = [];
 
         if (captureData.videoPath && fs.existsSync(captureData.videoPath)) {
@@ -244,8 +246,24 @@ async function processCaptureAsync(captureId, captureData) {
     }
 }
 
+/**
+ * Get all current statuses.
+ */
+function getAllStatuses() {
+    return Array.from(statusMap.values());
+}
+
+/**
+ * Remove a status entry (e.g. on delete).
+ */
+function deleteStatus(captureId) {
+    return statusMap.delete(captureId);
+}
+
 module.exports = {
     initStatus,
     getStatus,
+    getAllStatuses,
+    deleteStatus,
     processCaptureAsync,
 };

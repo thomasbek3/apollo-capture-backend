@@ -10,6 +10,45 @@ const processor = require('../services/processor');
 const router = express.Router();
 
 /**
+ * GET /api/capture/list
+ * Returns all captures for the dashboard (combines disk results + in-memory statuses).
+ */
+router.get('/list', (req, res) => {
+    try {
+        // Get completed captures from disk
+        const diskCaptures = storage.listCaptures();
+
+        // Get in-progress captures from memory
+        const allStatuses = processor.getAllStatuses ? processor.getAllStatuses() : [];
+        const processingCaptures = allStatuses
+            .filter(s => s.status === 'processing')
+            .map(s => ({
+                id: s.captureId,
+                propertyName: s.propertyName || s.captureId,
+                propertyAddress: s.propertyAddress || '',
+                status: 'processing',
+                date: s.startedAt || new Date().toISOString(),
+                roomCount: 0,
+                itemCount: 0,
+                photoCount: 0,
+                firstPhoto: null,
+            }));
+
+        // Merge: processing first, then completed
+        const diskIds = new Set(diskCaptures.map(c => c.id));
+        const allCaptures = [
+            ...processingCaptures.filter(c => !diskIds.has(c.id)),
+            ...diskCaptures,
+        ];
+
+        res.json({ captures: allCaptures });
+    } catch (err) {
+        logger.error('Error listing captures', err);
+        res.json({ captures: [] });
+    }
+});
+
+/**
  * POST /api/capture/upload
  *
  * Receives capture data from the mobile app as multipart/form-data.
@@ -78,6 +117,10 @@ router.post('/upload', assignUploadId, (req, res, next) => {
         logger.info(`  Video: ${videoFiles.length} files`);
         logger.info(`  Photos: ${photoFiles.length} files`);
         logger.info(`  Transcript items: ${transcript.length}`);
+        const { durationSeconds, width, height } = req.body;
+
+        logger.info(`Received upload: ${propertyName} (${propertyAddress})`);
+        if (req.files.video) logger.info(`Video: ${req.files.video[0].originalname} (${durationSeconds}s, ${width}x${height})`);
         logger.info(`  Room boundaries: ${roomBoundaries.length}`);
         logger.info(`  Property: "${propertyName}" at "${propertyAddress}"`);
 
@@ -118,7 +161,7 @@ router.post('/upload', assignUploadId, (req, res, next) => {
         }
 
         // Initialize processing status
-        processor.initStatus(captureId);
+        processor.initStatus(captureId, { propertyName, propertyAddress });
 
         // Kick off async processing (fire-and-forget)
         processor.processCaptureAsync(captureId, {
@@ -232,6 +275,27 @@ router.get('/:captureId/result', (req, res) => {
         error: 'Not found',
         message: `No result found for capture: ${captureId}`,
     });
+});
+
+/**
+ * DELETE /api/capture/:captureId
+ * 
+ * Delete a capture and all its data.
+ */
+router.delete('/:captureId', (req, res) => {
+    const { captureId } = req.params;
+
+    // Remove from in-memory status if present
+    processor.deleteStatus(captureId);
+
+    const result = storage.deleteCapture(captureId);
+
+    if (result.success) {
+        logger.info(`Capture deleted: ${captureId}`);
+        res.json({ message: 'Deleted successfully' });
+    } else {
+        res.status(500).json({ error: 'Failed to delete capture', details: result.error });
+    }
 });
 
 module.exports = router;

@@ -97,6 +97,91 @@ function saveCaptureJson(captureId, filename, data) {
     return filePath;
 }
 
+/**
+ * List all captures with summary data for the dashboard.
+ */
+function listCaptures() {
+    const captures = [];
+    // Scan results directory for completed captures
+    if (fs.existsSync(RESULTS_DIR)) {
+        const files = fs.readdirSync(RESULTS_DIR).filter(f => f.endsWith('.json'));
+        for (const file of files) {
+            try {
+                const captureId = path.basename(file, '.json');
+                const result = JSON.parse(fs.readFileSync(path.join(RESULTS_DIR, file), 'utf-8'));
+                const meta = result.metadata || {};
+                const rooms = result.rooms || [];
+                const photos = result.photos || [];
+                const totalItems = rooms.reduce((sum, r) => sum + (r.inventory || []).length, 0);
+                const firstPhoto = photos.length > 0
+                    ? (typeof photos[0] === 'string' ? photos[0] : (photos[0].filename || photos[0].path || ''))
+                    : null;
+                const stat = fs.statSync(path.join(RESULTS_DIR, file));
+                captures.push({
+                    id: captureId,
+                    propertyName: meta.propertyName || captureId,
+                    propertyAddress: meta.propertyAddress || '',
+                    status: 'complete',
+                    date: meta.date || stat.mtime.toISOString(),
+                    roomCount: rooms.length,
+                    itemCount: totalItems,
+                    photoCount: photos.length,
+                    firstPhoto,
+                });
+            } catch (err) {
+                logger.warn(`Failed to parse result ${file}: ${err.message}`);
+            }
+        }
+    }
+    // Sort by date descending
+    captures.sort((a, b) => new Date(b.date) - new Date(a.date));
+    return captures;
+}
+
+/**
+ * Delete all data associated with a capture.
+ */
+/**
+ * Delete all data associated with a capture.
+ * Retries up to 3 times to handle Windows file locking issues.
+ */
+function deleteCapture(captureId) {
+    const captureDir = path.join(CAPTURES_DIR, captureId);
+    const resultFile = path.join(RESULTS_DIR, `${captureId}.json`);
+    const tempDir = path.join(STORAGE_PATH, 'temp', captureId);
+
+    const maxRetries = 3;
+    let attempts = 0;
+    let lastError = null;
+
+    while (attempts < maxRetries) {
+        attempts++;
+        try {
+            if (fs.existsSync(captureDir)) {
+                fs.rmSync(captureDir, { recursive: true, force: true });
+                logger.info(`Deleted capture directory: ${captureDir}`);
+            }
+            if (fs.existsSync(resultFile)) {
+                fs.rmSync(resultFile, { force: true });
+                logger.info(`Deleted result file: ${resultFile}`);
+            }
+            if (fs.existsSync(tempDir)) {
+                fs.rmSync(tempDir, { recursive: true, force: true });
+            }
+            return { success: true };
+        } catch (err) {
+            lastError = err;
+            logger.warn(`Attempt ${attempts} failed to delete capture ${captureId}: ${err.message}`);
+            // Wait 500ms before retry
+            const end = Date.now() + 500;
+            while (Date.now() < end) { }
+        }
+    }
+
+    logger.error(`Failed to delete capture ${captureId} after ${maxRetries} attempts: ${lastError.message}`);
+    return { success: false, error: lastError.message };
+}
+
 module.exports = {
     initStorage,
     ensureCaptureDir,
@@ -107,6 +192,8 @@ module.exports = {
     getResult,
     getFileUrl,
     saveCaptureJson,
+    listCaptures,
+    deleteCapture,
     STORAGE_PATH,
     CAPTURES_DIR,
     RESULTS_DIR,

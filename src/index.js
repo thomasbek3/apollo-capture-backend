@@ -43,22 +43,16 @@ app.use('/api/files', express.static(storage.STORAGE_PATH, {
     immutable: true,
 }));
 
+// Serve the frontend UI from /public
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
 // ─── Routes ───
 app.use('/api/capture', captureRoutes);
 app.use('/api/health', healthRoutes);
 
 // ─── Root ───
 app.get('/', (req, res) => {
-    res.json({
-        service: 'Apollo Capture Backend',
-        version: '1.0.0',
-        docs: {
-            health: 'GET /api/health',
-            upload: 'POST /api/capture/upload',
-            status: 'GET /api/capture/:captureId/status',
-            result: 'GET /api/capture/:captureId/result',
-        },
-    });
+    res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
 // ─── Error Handling ───
